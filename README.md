@@ -1,6 +1,6 @@
-# ⚡ Optimization From Scratch
+# AutoDiff Engine
 
-> Gradient Descent and SGD implemented in pure C++17 — no ML libraries, no abstraction layers, full math exposed.
+> Gradient Descent and SGD implemented in pure C++17, no ML libraries, no abstraction layers, full math exposed.
 
 ![C++17](https://img.shields.io/badge/C%2B%2B-17-blue?logo=cplusplus)
 ![Build](https://img.shields.io/badge/build-CMake-green)
@@ -11,11 +11,11 @@
 
 ## What is this?
 
-A personal engineering project where I implement the foundational pieces of ML optimization **completely from scratch in C++**: a strided tensor data structure, gradient descent in two forms (numerical and analytical), and mini-batch SGD — all visualized live using Raylib.
+A personal engineering project where I implement the foundational pieces of ML optimization **completely from scratch in C++**: a strided tensor data structure, gradient descent in two forms (numerical and analytical), and mini-batch SGD, all visualized live using Raylib.
 
 No PyTorch. No Eigen. No NumPy. Just C++, math, and pixels.
 
-I built this to make sure I *genuinely understand* what happens when you call `optimizer.step()` — every multiply, every divide, every gradient accumulation.
+I built this to make sure I *genuinely understand* what happens when you call `optimizer.step()`, every multiply, every divide, every gradient accumulation.
 
 ---
 
@@ -23,10 +23,10 @@ I built this to make sure I *genuinely understand* what happens when you call `o
 
 | Concept | Implementation |
 |---|---|
-| Custom strided Tensor | `include/tensor.hpp` — Rule of 5, `std::vector` backing, bounds-checked `operator()` |
+| Custom strided Tensor | `include/tensor.hpp`: Rule of 5, `std::vector` backing, bounds-checked `operator()` |
 | Mean Euclidean Distance Loss | `src/optimization.cpp::euclidean_loss()` |
-| GD — Numerical gradient | Finite-difference: `[L(x+h) − L(x)] / h` |
-| GD — Analytical gradient | Closed-form partial derivatives, exact |
+| GD: Numerical gradient | Finite-difference: `[L(x+h) − L(x)] / h` |
+| GD: Analytical gradient | Closed-form partial derivatives, exact |
 | Mini-batch SGD | Fisher-Yates shuffle + batched gradient accumulation |
 | Live Raylib plots | Scrollable/zoomable scatter plots and loss curves with legends |
 
@@ -35,10 +35,10 @@ I built this to make sure I *genuinely understand* what happens when you call `o
 ## What you'll see when you run it
 
 **Scatter plot window**
-100 random 2D points in black. After optimization converges, the single red dot marks where point `p` ended up — the geometric median of the cloud.
+100 random 2D points in black. After optimization converges, the single red dot marks where point `p` ended up, the geometric median of the cloud.
 
 **Loss curve window**
-A falling curve from epoch 0 to 99. Full-batch GD (both forms) gives a smooth descent. SGD gives a noisy, jumpier curve — that's the gradient variance from mini-batches. Both converge. That's the point.
+A falling curve from epoch 0 to 99. Full-batch GD (both forms) gives a smooth descent. SGD gives a noisy, jumpier curve, that's the gradient variance from mini-batches. Both converge. That's the point.
 
 Both windows support **mouse-wheel zoom** and stay open until you close them.
 
@@ -47,7 +47,7 @@ Both windows support **mouse-wheel zoom** and stay open until you close them.
 ## Project structure
 
 ```
-optimization-from-scratch/
+AutoDiff-Engine/
 │
 ├── include/
 │   ├── tensor.hpp          # Strided rank-1/2/3 tensor (custom, no Eigen)
@@ -86,8 +86,8 @@ sudo apt install build-essential cmake git libgl1-mesa-dev libx11-dev \
 ### Build
 
 ```bash
-git clone https://github.com/Kareem-Taha-05/optimization-from-scratch
-cd optimization-from-scratch
+git clone https://github.com/Kareem-Taha-05/AutoDiff-Engine
+cd AutoDiff-Engine
 
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
@@ -98,10 +98,10 @@ Binaries land in `build/bin/`.
 ### Run
 
 ```bash
-# Gradient descent — numerical gradient (finite-difference)
+# Gradient descent: numerical gradient (finite-difference)
 ./build/bin/ex1_limit_gd
 
-# Gradient descent — exact analytical gradient
+# Gradient descent: exact analytical gradient
 ./build/bin/ex2_closed_gd
 
 # Mini-batch SGD (batch_size = 10)
@@ -118,14 +118,14 @@ The `Tensor<T>` struct is the backbone of the project. It models a rank-1/2/3 st
 
 **Key design decisions:**
 
-- **`std::vector<T>` backing store** — instead of raw `new[]`/`delete[]`. This gives us correct copy, move, and destruction semantics for free via the compiler-generated Rule of Five, and makes the constructor exception-safe without any extra code.
-- **Explicit stride layout** — `stride_x = length_y * length_z`, `stride_y = length_z`, `stride_z = 1` — the same row-major layout used by NumPy and most linear algebra libraries.
-- **Bounds-checked `operator()(i, j, k)`** — active in Debug builds, compiled out in Release via `NDEBUG`.
+- **`std::vector<T>` backing store:** instead of raw `new[]`/`delete[]`. This gives us correct copy, move, and destruction semantics for free via the compiler-generated Rule of Five, and makes the constructor exception-safe without any extra code.
+- **Explicit stride layout:** `stride_x = length_y * length_z`, `stride_y = length_z`, `stride_z = 1`, the same row-major layout used by NumPy and most linear algebra libraries.
+- **Bounds-checked `operator()(i, j, k)`:** active in Debug builds, compiled out in Release via `NDEBUG`.
 - The Rule of Five is declared `= default` explicitly to document intent even though `std::vector` makes them redundant.
 
 ```cpp
 Tensor<float> weights(128, 64);     // 2D: 128 rows × 64 cols
-weights(3, 7) = 0.42f;              // operator() — no manual index arithmetic
+weights(3, 7) = 0.42f;              // operator(), no manual index arithmetic
 ```
 
 ---
@@ -158,14 +158,14 @@ p ← p − lr · ∇L(p)
 
 These are the open items I'm actively building toward:
 
-- [ ] **3D loss surface** — render an X×Y mesh of loss values as a Raylib 3D surface using `DrawMesh`, so you can visually see the bowl shape and watch the point descend into it.
-- [ ] **Gradient direction arrows** — overlay `DrawLineEx` vectors from `p` in the direction of `−∇L` at each epoch to show *where* the gradient is pointing.
-- [ ] **Tensor reshape / transpose** — implement `reshape(nx, ny)` returning a view with new strides but shared data (no copy), and a 2D `transpose()`.
-- [ ] **Momentum SGD** — add a velocity buffer and β parameter to compare convergence vs. vanilla SGD.
-- [ ] **Lecture 5+ content** — extend to linear regression and a from-scratch single-layer network using the existing Tensor struct.
+- [ ] **3D loss surface:** render an X×Y mesh of loss values as a Raylib 3D surface using `DrawMesh`, so you can visually see the bowl shape and watch the point descend into it.
+- [ ] **Gradient direction arrows:** overlay `DrawLineEx` vectors from `p` in the direction of `−∇L` at each epoch to show *where* the gradient is pointing.
+- [ ] **Tensor reshape / transpose:** implement `reshape(nx, ny)` returning a view with new strides but shared data (no copy), and a 2D `transpose()`.
+- [ ] **Momentum SGD:** add a velocity buffer and β parameter to compare convergence vs. vanilla SGD.
+- [ ] **Lecture 5+ content:** extend to linear regression and a from-scratch single-layer network using the existing Tensor struct.
 
 ---
 
 ## License
 
-MIT — do whatever you want with it.
+MIT -- do whatever you want with it.
