@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(OptimizationFromScratch
-    VERSION     0.1.0
-    DESCRIPTION "Gradient Descent & SGD from scratch in C++17 with Raylib visualizations"
+    VERSION     0.2.0
+    DESCRIPTION "Gradient Descent, SGD and optimizer comparison (Momentum/AdaGrad/RMSprop/Adam) from scratch in C++17 with Raylib visualizations"
     LANGUAGES   CXX
 )
 
@@ -48,6 +48,7 @@ add_library(optim_core STATIC
     src/optimization.cpp
     src/data_generation.cpp
     src/visualization.cpp
+    src/report.cpp
 )
 target_include_directories(optim_core PUBLIC include)
 target_link_libraries(optim_core PUBLIC raylib)
@@ -58,6 +59,8 @@ set(EXAMPLES
     ex1_limit_gd
     ex2_closed_gd
     ex3_sgd
+    ex4_optimizer_compare
+    ex5_nonconvex
 )
 
 foreach(EX IN LISTS EXAMPLES)
