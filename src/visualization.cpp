@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <algorithm>
+#include <limits>
 #include <string>
 
 namespace viz {
@@ -177,6 +178,132 @@ void plot_loss_curve(const std::vector<Point>& losses, const PlotConfig& cfg) {
 
         DrawText(cfg.title.c_str(), offset + 8, 10, 14, DARKGRAY);
         DrawText("Scroll to zoom", cfg.width - 100, cfg.height - 20, 10, LIGHTGRAY);
+
+        EndDrawing();
+    }
+
+    CloseWindow();
+}
+
+void plot_loss_contour(const LossFn& loss,
+                       const GradFn& grad,
+                       const std::vector<Trajectory>& trajectories,
+                       const PlotConfig& cfg)
+{
+    InitWindow(cfg.width, cfg.height, cfg.title.c_str());
+    SetTargetFPS(60);
+
+    constexpr int         kCell        = 8;    // heatmap cell size in pixels
+    constexpr int         kLevels      = 12;   // number of contour bands
+    constexpr int         kArrowStep   = 50;   // pixels between two gradient arrows
+    constexpr float       kArrowLength = 20.0f;
+    constexpr std::size_t kPaletteSize = 5;
+
+    const int   cells_x = cfg.width  / kCell;
+    const int   cells_y = cfg.height / kCell;
+    const float range   = cfg.val_max - cfg.val_min;
+    const float w       = static_cast<float>(cfg.width);
+    const float h       = static_cast<float>(cfg.height);
+
+    // The loss of every cell is evaluated ONCE here — doing it inside the
+    // render loop would redo the expensive part 60 times per second.
+    std::vector<float> grid(static_cast<std::size_t>(cells_x * cells_y));
+    float lo = std::numeric_limits<float>::max();
+    float hi = std::numeric_limits<float>::lowest();
+
+    for (int i = 0; i < cells_y; ++i) {
+        for (int j = 0; j < cells_x; ++j) {
+            // Row 0 is the BOTTOM row (y = val_min); screen y goes down, flipped at draw time
+            const Point p = {
+                cfg.val_min + (static_cast<float>(j) + 0.5f) / static_cast<float>(cells_x) * range,
+                cfg.val_min + (static_cast<float>(i) + 0.5f) / static_cast<float>(cells_y) * range
+            };
+            const float l = loss(p);
+            grid[static_cast<std::size_t>(i * cells_x + j)] = l;
+            lo = std::min(lo, l);
+            hi = std::max(hi, l);
+        }
+    }
+
+    std::vector<Color> colors(grid.size());
+    for (std::size_t k = 0; k < grid.size(); ++k) {
+        float t = (grid[k] - lo) / (hi - lo);        // 0 at the lowest loss, 1 at the highest
+        t = std::sqrt(t);                            // loss grows fast far away; sqrt gives the area near the minimum more bands
+        t = std::floor(t * static_cast<float>(kLevels)) / static_cast<float>(kLevels);  // snap to a band
+        colors[k] = ColorFromHSV(240.0f * (1.0f - t), 0.6f, 0.95f);                     // blue -> red
+    }
+
+    const Color palette[kPaletteSize] = {BLACK, WHITE, MAGENTA, LIME, GOLD};
+
+    // Data space -> screen space (y flipped)
+    auto to_px = [&](const Point& pt) -> Vector2 {
+        return { (pt.x - cfg.val_min) / range * w,
+                 h - (pt.y - cfg.val_min) / range * h };
+    };
+
+    while (!WindowShouldClose()) {
+        BeginDrawing();
+        ClearBackground(RAYWHITE);
+
+        // Heatmap
+        for (int i = 0; i < cells_y; ++i) {
+            for (int j = 0; j < cells_x; ++j) {
+                DrawRectangle(j * kCell, cfg.height - (i + 1) * kCell, kCell, kCell,
+                              colors[static_cast<std::size_t>(i * cells_x + j)]);
+            }
+        }
+
+        // Gradient field
+        if (cfg.show_grad_vec || IsKeyDown(KEY_G)) {
+            for (int py = kArrowStep / 2; py < cfg.height; py += kArrowStep) {
+                for (int px = kArrowStep / 2; px < cfg.width; px += kArrowStep) {
+                    const Point p = {
+                        cfg.val_min + static_cast<float>(px) / w * range,
+                        cfg.val_min + static_cast<float>(cfg.height - py) / h * range
+                    };
+                    const Point g = grad(p);
+                    const float mag = std::sqrt(g.x * g.x + g.y * g.y);
+                    if (mag < 1e-8f) continue;
+
+                    const Vector2 from = {static_cast<float>(px), static_cast<float>(py)};
+                    // Descent direction is -grad; screen y points down, so the y sign flips again
+                    const Vector2 to   = {from.x + (-g.x / mag) * kArrowLength,
+                                          from.y + ( g.y / mag) * kArrowLength};
+                    DrawLineEx(from, to, 1.5f, BLACK);
+                    DrawCircleV(to, 3.0f, BLACK);
+                }
+            }
+        }
+
+        // Trajectories
+        for (std::size_t r = 0; r < trajectories.size(); ++r) {
+            const Color col  = palette[r % kPaletteSize];
+            const auto& path = trajectories[r].path;
+
+            for (std::size_t k = 1; k < path.size(); ++k)
+                DrawLineEx(to_px(path[k - 1]), to_px(path[k]), 1.5f, col);
+
+            if (!path.empty())
+                DrawCircleV(to_px(path.back()), 5.0f, col);   // where the optimizer ended up
+        }
+
+        // Legend
+        const int legend_h = 22 * static_cast<int>(trajectories.size()) + 26;
+        DrawRectangle(6, 6, 170, legend_h, Fade(LIGHTGRAY, 0.8f));
+        DrawRectangleLines(6, 6, 170, legend_h, GRAY);
+        for (std::size_t r = 0; r < trajectories.size(); ++r) {
+            const int ly = 16 + 22 * static_cast<int>(r);
+            DrawLineEx({14.0f, static_cast<float>(ly + 6)}, {40.0f, static_cast<float>(ly + 6)},
+                       3.0f, palette[r % kPaletteSize]);
+            DrawText(trajectories[r].name.c_str(), 48, ly, 14, DARKGRAY);
+        }
+        DrawText("hold G: gradient field", 14,
+                 16 + 22 * static_cast<int>(trajectories.size()), 11, DARKGRAY);
+
+        // Axis range hints
+        DrawText(TextFormat("%.2f", static_cast<double>(cfg.val_min)), 4, cfg.height - 16, 11, DARKGRAY);
+        DrawText(TextFormat("%.2f", static_cast<double>(cfg.val_max)), cfg.width - 40, cfg.height - 16, 11, DARKGRAY);
+        DrawText(cfg.title.c_str(), cfg.width / 2 - 80, 10, 14, DARKGRAY);
 
         EndDrawing();
     }
